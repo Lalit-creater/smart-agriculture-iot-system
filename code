@@ -1,0 +1,119 @@
+/************* BLYNK DETAILS *************/
+#define BLYNK_TEMPLATE_ID "TMPL3fuvINnv1"
+#define BLYNK_TEMPLATE_NAME "Plant monitor"
+#define BLYNK_AUTH_TOKEN "Xxxxxxxxxxxxxxxxx"
+
+#define BLYNK_PRINT Serial
+
+/************* LIBRARIES *************/
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+#include <DHT.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+/************* WIFI *************/
+char ssid[] = "Redmi";
+char pass[] = "xxxxxxxx";
+
+/************* DHT11 *************/
+#define DHTPIN 4
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+/************* SOIL MOISTURE *************/
+#define MOISTURE_PIN 34
+
+/************* LEDs *************/
+#define LED_IRRIGATION 16
+#define LED_HEALTHY    17
+#define LED_DISEASE    18
+
+/************* LCD *************/
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+/************* TIMER *************/
+BlynkTimer timer;
+
+/************* CLEAR LEDs *************/
+void clearLEDs() {
+  digitalWrite(LED_IRRIGATION, LOW);
+  digitalWrite(LED_HEALTHY, LOW);
+  digitalWrite(LED_DISEASE, LOW);
+}
+
+/************* SEND DATA *************/
+void sendData() {
+
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+  int raw = analogRead(MOISTURE_PIN);
+
+  int moisture = map(raw, 4095, 0, 0, 100);
+  moisture = constrain(moisture, 0, 100);
+
+  String status;
+
+  clearLEDs();
+
+  if (moisture < 30) {
+    status = "Need Irrigation";
+    digitalWrite(LED_IRRIGATION, HIGH);
+  }
+  else if (moisture > 60 && h > 70) {
+    status = "Disease Risk";
+    digitalWrite(LED_DISEASE, HIGH);
+  }
+  else {
+    status = "Plant Healthy";
+    digitalWrite(LED_HEALTHY, HIGH);
+  }
+
+  // -------- LCD UPDATE --------
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("M:");
+  lcd.print(moisture);
+  lcd.print("% T:");
+  lcd.print(t);
+  lcd.print("C");
+
+  lcd.setCursor(0, 1);
+  lcd.print(status);
+
+  // -------- BLYNK UPDATE --------
+  Blynk.virtualWrite(V0, moisture);
+  Blynk.virtualWrite(V1, t);
+  Blynk.virtualWrite(V2, h);
+  Blynk.virtualWrite(V3, status);
+
+  // -------- SERIAL --------
+  Serial.println("------ DATA SENT ------");
+}
+
+/************* SETUP *************/
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(LED_IRRIGATION, OUTPUT);
+  pinMode(LED_HEALTHY, OUTPUT);
+  pinMode(LED_DISEASE, OUTPUT);
+
+  dht.begin();
+
+  lcd.init();
+  lcd.backlight();
+  lcd.print("Plant Monitor");
+  delay(2000);
+  lcd.clear();
+
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+
+  timer.setInterval(3000L, sendData);
+}
+
+/************* LOOP *************/
+void loop() {
+  Blynk.run();
+  timer.run();
+}
